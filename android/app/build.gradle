@@ -1,0 +1,44 @@
+plugins { id 'com.android.application' }
+def ksProps = new Properties()
+// Signing config is read from a keystore.properties file that is NOT in git.
+// Path: env TENKLINKA_KEYSTORE_PROPS, or android/keystore.properties
+def ksFile = file(System.getenv('TENKLINKA_KEYSTORE_PROPS') ?: rootProject.file('keystore.properties').path)
+if (ksFile.exists()) ksFile.withInputStream { ksProps.load(it) }
+android {
+    namespace 'com.luntikvisuals.tenklinka'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'com.luntikvisuals.tenklinka'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+    signingConfigs {
+        release {
+            if (ksFile.exists()) {
+                storeFile file(ksProps['storeFile'])
+                storePassword ksProps['storePassword']
+                keyAlias ksProps['keyAlias']
+                keyPassword ksProps['keyPassword']
+                enableV1Signing true
+                enableV2Signing true
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+    sourceSets { main { assets.srcDirs += ["$buildDir/generated/gameAssets"] } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+
+// The game itself lives in the repo root (index.html); copy it into the APK assets.
+def copyGame = tasks.register('copyGame', Copy) {
+    from rootProject.file('../index.html')
+    into "$buildDir/generated/gameAssets"
+}
+preBuild.dependsOn copyGame

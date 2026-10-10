@@ -1,10 +1,9 @@
-name: Publish APK release (one-time bootstrap)
+name: Publish v2.0 release (one-time bootstrap)
 
-# The GitHub API tools used to create this repo can only upload text files,
-# so the signed APK and the icon PNGs were uploaded as a base64 payload.
-# This workflow unpacks them, commits the binary sources (icons, gradle wrapper),
-# removes the payload, and creates Release v1.0 with the APK attached.
-# It does NOT build or sign anything; the APK was built and signed locally.
+# The GitHub API tools used to update this repo can only upload text files,
+# so the signed APK (built and signed locally, versionCode 2) was uploaded as base64.
+# This workflow decodes it, verifies the SHA-256, creates Release v2.0 with the APK,
+# removes the payload and fast-forwards gh-pages to main. It does NOT build or sign anything.
 
 on:
   push:
@@ -21,57 +20,54 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Decode and verify payload
+      - name: Decode and verify APK
         run: |
           set -euo pipefail
-          test -f .github/bootstrap/payload.tgz.b64 || { echo "payload already processed"; exit 0; }
-          base64 -d .github/bootstrap/payload.tgz.b64 > /tmp/payload.tgz
-          echo "$(cat .github/bootstrap/payload.sha256)  /tmp/payload.tgz" | sha256sum -c -
-          mkdir -p /tmp/p && tar xzf /tmp/payload.tgz -C /tmp/p
-          echo "9aa5511f8485ce5805d735d324a5eb384e720e5612f784ed8bf1938ce662e2ab  /tmp/p/apk/ten-klinka.apk" | sha256sum -c -
+          test -f .github/bootstrap/ten-klinka-v2.apk.b64 || { echo "payload already processed"; exit 0; }
+          mkdir -p /tmp/p
+          base64 -d .github/bootstrap/ten-klinka-v2.apk.b64 > /tmp/p/ten-klinka.apk
+          echo "$(cat .github/bootstrap/ten-klinka-v2.apk.sha256)  /tmp/p/ten-klinka.apk" | sha256sum -c -
+          echo "0763704fd5f82b99e18d401a247fd2e56c2ccc700a61d8981484368b7f72e5d1  /tmp/p/ten-klinka.apk" | sha256sum -c -
+          ls -l /tmp/p
 
-      - name: Commit binary files, remove payload
+      - name: Create release v2.0 with APK
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test -d /tmp/p || exit 0
-          cp /tmp/p/icon.png icon.png
-          cp -r /tmp/p/android/. android/
-          git rm -q -r .github/bootstrap
+          test -f /tmp/p/ten-klinka.apk || exit 0
+          gh release view v2.0 >/dev/null 2>&1 && { echo "release exists"; exit 0; }
+          cat > /tmp/notes.md <<'NOTES'
+          «Тень Клинка» 2.0 — большое обновление (устанавливается поверх 1.0, та же подпись).
+
+          - Главное меню: Сюжет, Мультиплеер, Настройки.
+          - Сюжет: 9 глав «Саги о датском веке» — Ульф, Сигрид, Бьёрн, Харальд, Торкелл, Торфинн, Аскеладд, Кнуд и финальный босс Торс; открытие бойцов и оружия.
+          - 10 бойцов и 7 видов оружия: меч, топор, копьё, два меча, датская секира, сакс, парные кинжалы.
+          - Мультиплеер: рейтинговые бои с поиском соперника, кубками и лигами (соперники — боты, игра офлайн), профиль и награды-скины; дуэль вдвоём на одном телефоне; тренировка с ИИ.
+          - Настройки: звук, музыка, эффекты, сложность, тряска, подсказки, размер/прозрачность кнопок, сброс прогресса.
+
+          Android 7.0+, пакет com.luntikvisuals.tenklinka, versionCode 2.
+          SHA-256: 0763704fd5f82b99e18d401a247fd2e56c2ccc700a61d8981484368b7f72e5d1
+          NOTES
+          sed -i 's/^          //' /tmp/notes.md
+          gh release create v2.0 /tmp/p/ten-klinka.apk --target main --latest --title "Тень Клинка v2.0" --notes-file /tmp/notes.md
+
+      - name: Remove payload, update gh-pages
+        run: |
+          set -euo pipefail
+          test -f /tmp/p/ten-klinka.apk || exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add icon.png android
-          git update-index --chmod=+x android/gradlew
-          git commit -m "Add app icons and gradle wrapper jar; remove bootstrap payload"
-          git push
+          git rm -q -r .github/bootstrap
+          git commit -m "Remove v2.0 bootstrap payload (APK published in Release v2.0)"
+          git push origin HEAD:main
+          git push origin HEAD:gh-pages
 
-      - name: Create release v1.0 with APK
-        id: rel
+      - name: Request Pages rebuild
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          test -d /tmp/p || exit 0
-          gh release view v1.0 >/dev/null 2>&1 && { echo "release exists"; exit 0; }
-          gh release create v1.0 /tmp/p/apk/ten-klinka.apk \
-            --target main --title "Тень Клинка v1.0" \
-            --notes "Первая версия Android-приложения «Тень Клинка» (com.luntikvisuals.tenklinka, Android 7.0+). Скачайте ten-klinka.apk ниже и установите (разрешите установку из неизвестных источников). SHA-256: 9aa5511f8485ce5805d735d324a5eb384e720e5612f784ed8bf1938ce662e2ab"
-
-      - name: Fallback - commit APK into repo if release failed
-        if: steps.rel.outcome == 'failure'
-        run: |
-          set -euo pipefail
-          git pull -q --rebase
-          mkdir -p apk && cp /tmp/p/apk/ten-klinka.apk apk/ten-klinka.apk
-          git add apk/ten-klinka.apk
-          git commit -m "Add APK (release upload failed)"
-          git push
-
-      - name: Try to enable GitHub Pages (main, /)
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api -X POST "repos/${{ github.repository }}/pages" -f "source[branch]=main" -f "source[path]=/" \
-            || echo "Could not enable Pages with the workflow token (needs admin rights)."
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds" || echo "Pages rebuild request not permitted; the push to gh-pages should trigger it."

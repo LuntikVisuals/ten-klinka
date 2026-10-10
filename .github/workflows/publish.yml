@@ -1,0 +1,77 @@
+name: Publish APK release (one-time bootstrap)
+
+# The GitHub API tools used to create this repo can only upload text files,
+# so the signed APK and the icon PNGs were uploaded as a base64 payload.
+# This workflow unpacks them, commits the binary sources (icons, gradle wrapper),
+# removes the payload, and creates Release v1.0 with the APK attached.
+# It does NOT build or sign anything; the APK was built and signed locally.
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/bootstrap/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decode and verify payload
+        run: |
+          set -euo pipefail
+          test -f .github/bootstrap/payload.tgz.b64 || { echo "payload already processed"; exit 0; }
+          base64 -d .github/bootstrap/payload.tgz.b64 > /tmp/payload.tgz
+          echo "$(cat .github/bootstrap/payload.sha256)  /tmp/payload.tgz" | sha256sum -c -
+          mkdir -p /tmp/p && tar xzf /tmp/payload.tgz -C /tmp/p
+          echo "9aa5511f8485ce5805d735d324a5eb384e720e5612f784ed8bf1938ce662e2ab  /tmp/p/apk/ten-klinka.apk" | sha256sum -c -
+
+      - name: Commit binary files, remove payload
+        run: |
+          set -euo pipefail
+          test -d /tmp/p || exit 0
+          cp /tmp/p/icon.png icon.png
+          cp -r /tmp/p/android/. android/
+          git rm -q -r .github/bootstrap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add icon.png android
+          git update-index --chmod=+x android/gradlew
+          git commit -m "Add app icons and gradle wrapper jar; remove bootstrap payload"
+          git push
+
+      - name: Create release v1.0 with APK
+        id: rel
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -d /tmp/p || exit 0
+          gh release view v1.0 >/dev/null 2>&1 && { echo "release exists"; exit 0; }
+          gh release create v1.0 /tmp/p/apk/ten-klinka.apk \
+            --target main --title "Тень Клинка v1.0" \
+            --notes "Первая версия Android-приложения «Тень Клинка» (com.luntikvisuals.tenklinka, Android 7.0+). Скачайте ten-klinka.apk ниже и установите (разрешите установку из неизвестных источников). SHA-256: 9aa5511f8485ce5805d735d324a5eb384e720e5612f784ed8bf1938ce662e2ab"
+
+      - name: Fallback - commit APK into repo if release failed
+        if: steps.rel.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          git pull -q --rebase
+          mkdir -p apk && cp /tmp/p/apk/ten-klinka.apk apk/ten-klinka.apk
+          git add apk/ten-klinka.apk
+          git commit -m "Add APK (release upload failed)"
+          git push
+
+      - name: Try to enable GitHub Pages (main, /)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST "repos/${{ github.repository }}/pages" -f "source[branch]=main" -f "source[path]=/" \
+            || echo "Could not enable Pages with the workflow token (needs admin rights)."

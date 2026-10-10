@@ -2,6 +2,9 @@ package com.luntikvisuals.tenklinka;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
+import android.net.Uri;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
@@ -10,13 +13,18 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Toast;
 
 public class MainActivity extends Activity {
+    private static final int REQ_PICK_IMAGE = 4201;
     private WebView webView;
+    // pending <input type=file> callback from the WebView (avatar picker)
+    private ValueCallback<Uri[]> fileCallback;
 
     // Makes Fullscreen API / orientation lock calls from the game resolve harmlessly:
     // the Activity itself is already fullscreen + landscape.
@@ -64,7 +72,34 @@ public class MainActivity extends Activity {
         s.setDisplayZoomControls(false);
         s.setTextZoom(100);
 
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
+                                             FileChooserParams params) {
+                // a previous chooser that never returned must be released, or the input stays dead
+                if (fileCallback != null) { fileCallback.onReceiveValue(null); fileCallback = null; }
+                fileCallback = callback;
+                Intent pick = new Intent(Intent.ACTION_GET_CONTENT);
+                pick.addCategory(Intent.CATEGORY_OPENABLE);
+                pick.setType("image/*");
+                Intent chooser = Intent.createChooser(pick, "Выбери фото");
+                try {
+                    startActivityForResult(chooser, REQ_PICK_IMAGE);
+                } catch (ActivityNotFoundException e) {
+                    try {
+                        Intent alt = new Intent(Intent.ACTION_PICK);
+                        alt.setType("image/*");
+                        startActivityForResult(alt, REQ_PICK_IMAGE);
+                    } catch (ActivityNotFoundException e2) {
+                        fileCallback = null;
+                        callback.onReceiveValue(null);
+                        Toast.makeText(MainActivity.this, "Нет приложения для выбора фото", Toast.LENGTH_SHORT).show();
+                        return true;
+                    }
+                }
+                return true;
+            }
+        });
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
@@ -131,13 +166,39 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode != REQ_PICK_IMAGE) { super.onActivityResult(requestCode, resultCode, data); return; }
+        ValueCallback<Uri[]> cb = fileCallback;
+        fileCallback = null;
+        if (cb == null) return;
+        Uri[] result = null;
+        if (resultCode == RESULT_OK && data != null) {
+            if (data.getData() != null) {
+                result = new Uri[]{ data.getData() };
+            } else if (data.getClipData() != null && data.getClipData().getItemCount() > 0) {
+                result = new Uri[]{ data.getClipData().getItemAt(0).getUri() };
+            }
+        }
+        cb.onReceiveValue(result); // null on cancel — required so the next pick works
+    }
+
+    @Override
     public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) webView.goBack();
-        else super.onBackPressed();
+        if (webView == null) { super.onBackPressed(); return; }
+        // let the game navigate its own screens; exit only from the main menu
+        webView.evaluateJavascript(
+            "(function(){try{return !!(window.__tkBack&&window.__tkBack());}catch(e){return false;}})()",
+            value -> {
+                if (!"true".equals(value)) {
+                    if (webView != null && webView.canGoBack()) webView.goBack();
+                    else finish();
+                }
+            });
     }
 
     @Override
     protected void onDestroy() {
+        if (fileCallback != null) { fileCallback.onReceiveValue(null); fileCallback = null; }
         if (webView != null) { webView.destroy(); webView = null; }
         super.onDestroy();
     }

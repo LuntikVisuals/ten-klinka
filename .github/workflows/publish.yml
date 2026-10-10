@@ -1,8 +1,8 @@
-name: Publish v2.0 release (one-time bootstrap)
+name: Publish v3.0 release (one-time bootstrap)
 
 # The GitHub API tools used to update this repo can only upload text files,
-# so the signed APK (built and signed locally, versionCode 2) was uploaded as base64.
-# This workflow decodes it, verifies the SHA-256, creates Release v2.0 with the APK,
+# so the signed APK (built and signed locally, versionCode 3) was uploaded as base64.
+# This workflow decodes it, verifies the SHA-256, creates Release v3.0 with the APK,
 # removes the payload and fast-forwards gh-pages to main. It does NOT build or sign anything.
 
 on:
@@ -26,34 +26,40 @@ jobs:
       - name: Decode and verify APK
         run: |
           set -euo pipefail
-          test -f .github/bootstrap/ten-klinka-v2.apk.b64 || { echo "payload already processed"; exit 0; }
+          test -f .github/bootstrap/ten-klinka-v3.apk.b64 || { echo "payload already processed"; exit 0; }
           mkdir -p /tmp/p
-          base64 -d .github/bootstrap/ten-klinka-v2.apk.b64 > /tmp/p/ten-klinka.apk
-          echo "$(cat .github/bootstrap/ten-klinka-v2.apk.sha256)  /tmp/p/ten-klinka.apk" | sha256sum -c -
-          echo "0763704fd5f82b99e18d401a247fd2e56c2ccc700a61d8981484368b7f72e5d1  /tmp/p/ten-klinka.apk" | sha256sum -c -
+          base64 -d .github/bootstrap/ten-klinka-v3.apk.b64 > /tmp/p/ten-klinka.apk
+          echo "$(cat .github/bootstrap/ten-klinka-v3.apk.sha256)  /tmp/p/ten-klinka.apk" | sha256sum -c -
+          echo "97b4419bec20cf4d13a43d768bb2c74c86ec15e7955b9b1baebee12fe962f923  /tmp/p/ten-klinka.apk" | sha256sum -c -
           ls -l /tmp/p
 
-      - name: Create release v2.0 with APK
+      - name: Create release v3.0 with APK
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test -f /tmp/p/ten-klinka.apk || exit 0
-          gh release view v2.0 >/dev/null 2>&1 && { echo "release exists"; exit 0; }
+          gh release view v3.0 >/dev/null 2>&1 && { echo "release exists"; exit 0; }
           cat > /tmp/notes.md <<'NOTES'
-          «Тень Клинка» 2.0 — большое обновление (устанавливается поверх 1.0, та же подпись).
+          «Тень Клинка» 3.0 — большое обновление (устанавливается поверх 2.0 и 1.0, та же подпись; кубки и открытые в сюжете бойцы/оружие сохраняются).
 
-          - Главное меню: Сюжет, Мультиплеер, Настройки.
-          - Сюжет: 9 глав «Саги о датском веке» — Ульф, Сигрид, Бьёрн, Харальд, Торкелл, Торфинн, Аскеладд, Кнуд и финальный босс Торс; открытие бойцов и оружия.
-          - 10 бойцов и 7 видов оружия: меч, топор, копьё, два меча, датская секира, сакс, парные кинжалы.
-          - Мультиплеер: рейтинговые бои с поиском соперника, кубками и лигами (соперники — боты, игра офлайн), профиль и награды-скины; дуэль вдвоём на одном телефоне; тренировка с ИИ.
-          - Настройки: звук, музыка, эффекты, сложность, тряска, подсказки, размер/прозрачность кнопок, сброс прогресса.
+          - Свой ник (2–16 символов) и аватар из галереи: в профиле, меню, карточке соперника и результатах.
+          - Монеты, руны и лавка: бойцы и оружие покупаются или выпадают из сундуков. Пять редкостей (Обычный → Мифический) с цветными рамками; Тень с мечом бесплатно; дубликаты превращаются в руны и монеты.
+          - Улучшения до 10 уровня для бойцов, оружия и доспехов, характеристики видны на карточках.
+          - 5 доспехов без шлемов (кожа, гамбезон, кольчуга, ламеллы, Чешуя Фафнира): защита и скорость, видны на силуэте.
+          - Сундуки: обычный, редкий и легендарный, шансы показаны, есть анимация открытия.
+          - «Путь к славе»: 30 наград за кубки, от 25 до 4000.
+          - Ярость: при полной шкале — приём, свой для каждого оружия («Гнев Одина», «Ярость берсерка», «Копьё Гунгнира», «Вихрь клинков», «Удар тени»).
+          - Задания дня с монетами и сундуками.
+          - Новые арены: палуба драккара, снежная крепость, Лондонский мост 1014. Можно выбрать или играть на случайной.
+          - Режим «Выживание»: здоровье между боями восстанавливается лишь частично, рекорд сохраняется.
+          - Android: выбор фото из галереи, кнопка «Назад» внутри игры.
 
-          Android 7.0+, пакет com.luntikvisuals.tenklinka, versionCode 2.
-          SHA-256: 0763704fd5f82b99e18d401a247fd2e56c2ccc700a61d8981484368b7f72e5d1
+          Android 7.0+, пакет com.luntikvisuals.tenklinka, versionCode 3.
+          SHA-256: 97b4419bec20cf4d13a43d768bb2c74c86ec15e7955b9b1baebee12fe962f923
           NOTES
           sed -i 's/^          //' /tmp/notes.md
-          gh release create v2.0 /tmp/p/ten-klinka.apk --target main --latest --title "Тень Клинка v2.0" --notes-file /tmp/notes.md
+          gh release create v3.0 /tmp/p/ten-klinka.apk --target main --latest --title "Тень Клинка v3.0" --notes-file /tmp/notes.md
 
       - name: Remove payload, update gh-pages
         run: |
@@ -62,7 +68,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm -q -r .github/bootstrap
-          git commit -m "Remove v2.0 bootstrap payload (APK published in Release v2.0)"
+          git commit -m "Remove v3.0 bootstrap payload (APK published in Release v3.0)"
           git push origin HEAD:main
           git push origin HEAD:gh-pages
 

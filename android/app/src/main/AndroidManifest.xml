@@ -13,6 +13,7 @@
             android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|smallestScreenSize|uiMode"
             android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustPan"
             android:hardwareAccelerated="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
